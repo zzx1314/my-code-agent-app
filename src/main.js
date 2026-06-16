@@ -4,7 +4,7 @@
 
 // === Configuration ===
 const CONFIG = {
-  wsUrl: 'ws://localhost:8089',
+  wsUrl: 'ws://192.168.41.227:8089',
   username: '我',
   reconnectDelay: 3000,
   maxReconnectAttempts: 10,
@@ -236,17 +236,16 @@ function handleIncomingMessage(data) {
     return;
   }
 
+  if (type === 'reasoning_delta') {
+    return;
+  }
+
   if (type === 'pong') {
     addSystemMessage('🏓 pong');
     return;
   }
 
-  if (type === 'tool_call') {
-    addSystemMessage('🛠 正在调用: ' + (parsed.name || '') + '...');
-    return;
-  }
-  if (type === 'tool_result') {
-    addSystemMessage('✅ ' + (parsed.name || '') + ' 完成');
+  if (type === 'tool_call' || type === 'tool_result') {
     return;
   }
 
