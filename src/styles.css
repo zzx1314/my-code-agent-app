@@ -674,6 +674,193 @@ html, body {
   }
 }
 
+/* === File Cards === */
+.file-list-msg,
+.file-transfer-msg {
+  align-self: flex-start;
+  max-width: 100%;
+  width: 100%;
+}
+
+.file-bubble {
+  background: var(--bg-other-bubble) !important;
+  color: var(--text-bubble-other) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 12px !important;
+  width: 100%;
+  box-shadow: var(--shadow-sm);
+}
+
+.file-list-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.file-query-label {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.file-query-text {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.file-list-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-list-footer {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Individual file card */
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-header);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.file-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(11, 147, 246, 0.1);
+}
+
+.file-card:active {
+  transform: scale(0.98);
+}
+
+.file-card-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-icon-card {
+  font-size: 28px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.file-info-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-name-card {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-size-card {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.file-type-badge {
+  font-size: 18px;
+  opacity: 0.6;
+}
+
+/* Transfer card (file received from server) */
+.transfer-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  background: var(--bg-input);
+  border-color: var(--accent);
+  border-width: 1.5px;
+}
+
+.file-card-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+
+.file-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-other-bubble);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all var(--transition);
+  flex: 1;
+  justify-content: center;
+}
+
+.file-action-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.file-action-btn:active {
+  transform: scale(0.96);
+}
+
+.file-action-btn svg {
+  flex-shrink: 0;
+}
+
+/* File preview (text content snippet) */
+.file-preview {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  color: var(--text-primary);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.file-transfer-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
 /* === Responsive === */
 @media (min-width: 768px) {
   #app {

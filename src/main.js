@@ -43,6 +43,259 @@ function cacheElements() {
   elements.typingIndicator = document.getElementById('typing-indicator');
 }
 
+// === File Transfer ===
+// Track files received during current session
+const fileTransferState = {
+  pendingChunks: new Map(), // fileId -> { chunks: [], total: 0, meta: {} }
+  savedFiles: [],           // { name, path, size, mime }
+};
+
+function handleFileList(data) {
+  if (!data.files || !data.files.length) {
+    addSystemMessage('📂 未找到匹配的文件');
+    return;
+  }
+  addFileListMessage(data.files, data.query || '');
+}
+
+function handleFileData(data) {
+  // data: { path, name, mime, data (base64), size, encoding, id }
+  const isText = data.mime && data.mime.startsWith('text/');
+  let fileContent;
+
+  if (data.encoding === 'base64') {
+    // Decode base64 to binary
+    const binaryStr = atob(data.data);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    fileContent = bytes;
+  } else {
+    // Text content - encode as UTF-8 bytes
+    const encoder = new TextEncoder();
+    fileContent = encoder.encode(data.data);
+  }
+
+  addFileCardMessage({
+    name: data.name,
+    path: data.path,
+    size: data.size,
+    mime: data.mime || 'application/octet-stream',
+    content: fileContent,
+    isText: isText,
+    textContent: isText ? (data.encoding === 'base64' ? atob(data.data) : data.data) : null,
+  });
+}
+
+async function saveFileToDevice(fileInfo) {
+  const { name, content, mime } = fileInfo;
+
+  try {
+    // Try using Tauri FS plugin
+    if (window.__TAURI__ && window.__TAURI__.core) {
+      // Use $CACHE or $DOCUMENT for better Android compatibility
+      const baseDir = '$CACHE';
+      const dir = baseDir + '/shared_files';
+      const filePath = dir + '/' + name;
+
+      // Ensure the directory exists
+      try {
+        await window.__TAURI__.core.invoke('plugin:fs|mkdir', {
+          path: dir,
+          recursive: true,
+        });
+      } catch (e) { /* dir may already exist */ }
+
+      // Write file as base64 (handles both text and binary)
+      const b64 = arrayBufferToBase64(content);
+      await window.__TAURI__.core.invoke('plugin:fs|write_file', {
+        path: filePath,
+        contents: b64,
+      });
+
+      showToast('✅ 文件已保存: ' + name);
+      return { success: true, path: filePath };
+    } else {
+      // Fallback: download via blob URL
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      showToast('✅ 文件已下载: ' + name);
+      return { success: true, path: null };
+    }
+  } catch (err) {
+    console.error('[File] Save error:', err);
+    showToast('❌ 保存文件失败: ' + (err.message || err));
+    return { success: false, path: null };
+  }
+}
+
+async function shareFile(fileInfo) {
+  const { name, content, mime } = fileInfo;
+
+  try {
+    // First save the file
+    const result = await saveFileToDevice(fileInfo);
+    if (!result.success) return;
+
+    // Try Web Share API
+    if (navigator.share) {
+      try {
+        const blob = new Blob([content], { type: mime });
+        const file = new File([blob], name, { type: mime });
+        await navigator.share({
+          files: [file],
+          title: name,
+        });
+        return;
+      } catch (shareErr) {
+        // User cancelled or API not available
+        if (shareErr.name !== 'AbortError') {
+          console.warn('[File] Share API error:', shareErr);
+        }
+      }
+    }
+
+    showToast('文件已保存: ' + name);
+  } catch (err) {
+    console.error('[File] Share error:', err);
+    showToast('分享失败');
+  }
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function getFileIcon(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const icons = {
+    rs: '🦀', js: '📜', ts: '📘', py: '🐍', go: '🔵',
+    java: '☕', html: '🌐', css: '🎨', json: '📋',
+    md: '📝', txt: '📄', pdf: '📕', png: '🖼️',
+    jpg: '🖼️', jpeg: '🖼️', gif: '🎭', svg: '✨',
+    zip: '📦', tar: '📦', gz: '📦',
+  };
+  return icons[ext] || '📎';
+}
+
+function addFileListMessage(files, query) {
+  const div = document.createElement('div');
+  div.className = 'message file-list-msg';
+
+  const fileCards = files.map(f => `
+    <div class="file-card" data-path="${escapeHtml(f.path)}" data-name="${escapeHtml(f.name)}" data-size="${f.size}">
+      <span class="file-icon-card">${getFileIcon(f.name)}</span>
+      <div class="file-info-card">
+        <span class="file-name-card">${escapeHtml(f.name)}</span>
+        <span class="file-size-card">${formatFileSize(f.size)}</span>
+      </div>
+      <span class="file-type-badge">${f.kind === 'dir' ? '📁' : '📄'}</span>
+    </div>
+  `).join('');
+
+  div.innerHTML = `
+    <div class="message-bubble file-bubble">
+      <div class="file-list-header">
+        <span class="file-query-label">🔍 搜索结果</span>
+        ${query ? `<span class="file-query-text">${escapeHtml(query)}</span>` : ''}
+      </div>
+      <div class="file-list-cards">
+        ${fileCards}
+      </div>
+      <div class="file-list-footer">
+        共 ${files.length} 个结果
+      </div>
+    </div>
+    <div class="message-meta">
+      <span class="message-time">${formatTime(new Date())}</span>
+    </div>
+  `;
+
+  elements.messages.appendChild(div);
+  scrollToBottom();
+}
+
+function addFileCardMessage(fileInfo) {
+  const div = document.createElement('div');
+  div.className = 'message file-transfer-msg';
+
+  const previewHtml = fileInfo.isText && fileInfo.textContent
+    ? `<pre class="file-preview">${escapeHtml(fileInfo.textContent.substring(0, 2000))}${fileInfo.textContent.length > 2000 ? '...' : ''}</pre>`
+    : '';
+
+  div.innerHTML = `
+    <div class="message-bubble file-bubble">
+      <div class="file-card transfer-card">
+        <div class="file-card-main">
+          <span class="file-icon-card">${getFileIcon(fileInfo.name)}</span>
+          <div class="file-info-card">
+            <span class="file-name-card">${escapeHtml(fileInfo.name)}</span>
+            <span class="file-size-card">${formatFileSize(fileInfo.size)}</span>
+          </div>
+        </div>
+        <div class="file-card-actions">
+          <button class="file-action-btn save-btn" data-name="${escapeHtml(fileInfo.name)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            保存
+          </button>
+          <button class="file-action-btn share-btn" data-name="${escapeHtml(fileInfo.name)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+            分享
+          </button>
+        </div>
+      </div>
+      ${previewHtml}
+      <div class="file-transfer-note">📁 来自服务器</div>
+    </div>
+    <div class="message-meta">
+      <span class="message-time">${formatTime(new Date())}</span>
+    </div>
+  `;
+
+  // Store file data on the element for action buttons
+  div._fileInfo = fileInfo;
+
+  // Bind save button
+  div.querySelector('.save-btn')?.addEventListener('click', async () => {
+    await saveFileToDevice(fileInfo);
+    showToast('✅ 文件已保存');
+  });
+
+  // Bind share button
+  div.querySelector('.share-btn')?.addEventListener('click', async () => {
+    await shareFile(fileInfo);
+  });
+
+  elements.messages.appendChild(div);
+  scrollToBottom();
+  messageCount++;
+}
+
 // === WebSocket Connection ===
 function connectWebSocket() {
   if (ws) {
@@ -242,6 +495,16 @@ function handleIncomingMessage(data) {
 
   if (type === 'pong') {
     addSystemMessage('🏓 pong');
+    return;
+  }
+
+  if (type === 'file_list') {
+    handleFileList(parsed);
+    return;
+  }
+
+  if (type === 'file_data') {
+    handleFileData(parsed);
     return;
   }
 
