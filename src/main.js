@@ -4,7 +4,7 @@
 
 // === Configuration ===
 const CONFIG = {
-  wsUrl: 'ws://localhost:8080/ws',
+  wsUrl: 'ws://localhost:8089',
   username: '我',
   reconnectDelay: 3000,
   maxReconnectAttempts: 10,
@@ -134,6 +134,10 @@ function disconnectWebSocket() {
   updateSendButton();
 }
 
+// === State: streaming ===
+let streamingBuffer = '';
+let streamingMsgEl = null;
+
 // === Message Handling ===
 function sendMessage(text) {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -145,27 +149,27 @@ function sendMessage(text) {
   if (!trimmed) return;
 
   try {
-    // Send as JSON or plain text depending on server expectations
+    // Send as prompt command (ws_server protocol)
+    const msgId = 'mobile-' + Date.now();
     const payload = JSON.stringify({
-      type: 'message',
-      content: trimmed,
-      timestamp: Date.now(),
-      sender: CONFIG.username,
+      type: 'prompt',
+      text: trimmed,
+      id: msgId,
     });
     ws.send(payload);
+
+    // Track sent message for deduplication
+    sentMessages.set(trimmed, msgId);
+    setTimeout(() => sentMessages.delete(trimmed), DEDUP_WINDOW_MS);
+
+    // Add user message to chat
+    addUserMessage(trimmed);
   } catch (err) {
     console.error('[WebSocket] Send error:', err);
     showToast('发送失败');
     return;
   }
 
-  // Track sent message for deduplication
-  const msgId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-  sentMessages.set(trimmed, msgId);
-  setTimeout(() => sentMessages.delete(trimmed), DEDUP_WINDOW_MS);
-
-  // Add user message to chat
-  addUserMessage(trimmed, msgId);
   elements.input.value = '';
   autoResizeInput();
   updateSendButton();
@@ -173,38 +177,110 @@ function sendMessage(text) {
 }
 
 function handleIncomingMessage(data) {
-  let text = data;
-  let sender = null;
-  let msgId = null;
-
-  // Try to parse as JSON
+  let parsed;
   try {
-    const parsed = JSON.parse(data);
-    if (parsed.content) text = parsed.content;
-    if (parsed.sender) sender = parsed.sender;
-    if (parsed.id) msgId = parsed.id;
+    parsed = JSON.parse(data);
   } catch (e) {
-    // Plain text, use as-is
+    addOtherMessage(data);
+    messageCount++;
+    return;
   }
 
-  // Deduplication: skip message if we just sent it (server echo)
-  if (sentMessages.has(text)) {
-    // Update the sent message status to 'delivered'
-    const lastMsg = elements.messages.lastElementChild;
-    if (lastMsg && lastMsg.classList.contains('user')) {
-      const status = lastMsg.querySelector('.message-status');
-      if (status) {
-        status.className = 'message-status delivered';
+  const type = parsed.type;
+
+  if (type === 'text_delta') {
+    streamingBuffer += parsed.delta || '';
+    if (!streamingMsgEl) {
+      streamingMsgEl = createStreamingMessage();
+    }
+    const bubble = streamingMsgEl.querySelector('.message-bubble');
+    if (bubble) {
+      bubble.textContent = streamingBuffer;
+    }
+    scrollToBottom();
+    return;
+  }
+
+  if (type === 'result') {
+    const text = parsed.full_response || parsed.summary || '';
+    if (streamingMsgEl) {
+      const bubble = streamingMsgEl.querySelector('.message-bubble');
+      if (bubble) {
+        bubble.textContent = text;
       }
+      streamingMsgEl = null;
+    } else if (text) {
+      addOtherMessage(text);
+    }
+    streamingBuffer = '';
+    hideTyping();
+    messageCount++;
+    return;
+  }
+
+  if (type === 'error') {
+    addSystemMessage('❌ ' + (parsed.message || '未知错误'));
+    streamingBuffer = '';
+    streamingMsgEl = null;
+    hideTyping();
+    messageCount++;
+    return;
+  }
+
+  if (type === 'status') {
+    if (parsed.streaming) {
+      showTyping();
+    } else {
+      hideTyping();
     }
     return;
   }
 
-  addOtherMessage(text, sender);
-  messageCount++;
+  if (type === 'pong') {
+    addSystemMessage('🏓 pong');
+    return;
+  }
+
+  if (type === 'tool_call') {
+    addSystemMessage('🛠 正在调用: ' + (parsed.name || '') + '...');
+    return;
+  }
+  if (type === 'tool_result') {
+    addSystemMessage('✅ ' + (parsed.name || '') + ' 完成');
+    return;
+  }
+
+  const fallback = parsed.text || parsed.content || parsed.message || data;
+  if (typeof fallback === 'string' && fallback.length > 0) {
+    addOtherMessage(fallback);
+    messageCount++;
+  }
 }
 
 // === UI: Adding Messages ===
+function createStreamingMessage() {
+  const div = document.createElement('div');
+  div.className = 'message other streaming';
+  const time = formatTime(new Date());
+  div.innerHTML = `
+    <div class="message-bubble"></div>
+    <div class="message-meta">
+      <span class="message-time">${time}</span>
+    </div>
+  `;
+  elements.messages.appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+function showTyping() {
+  elements.typingIndicator.classList.remove('hidden');
+}
+
+function hideTyping() {
+  elements.typingIndicator.classList.add('hidden');
+}
+
 function addUserMessage(text, msgId = null) {
   const div = document.createElement('div');
   div.className = 'message user';
