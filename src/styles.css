@@ -88,7 +88,6 @@ html, body {
   max-width: 100%;
   margin: 0 auto;
   position: relative;
-  overflow: hidden;
 }
 
 /* === Header === */
@@ -103,6 +102,8 @@ html, body {
   box-shadow: var(--shadow-sm);
   z-index: 10;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
   -webkit-user-select: none;
   user-select: none;
 }
