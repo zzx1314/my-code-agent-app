@@ -538,10 +538,36 @@ function setupEventListeners() {
   });
 }
 
+// === Viewport lock (keep header & app fully visible on keyboard open) ===
+function setupViewportLock() {
+  const app = document.getElementById('app');
+
+  function adjustAppHeight() {
+    if (window.visualViewport) {
+      requestAnimationFrame(() => {
+        app.style.height = window.visualViewport.height + 'px';
+      });
+    }
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      adjustAppHeight();
+      // Ensure page stays scrolled to top (keyboard can cause unwanted scroll)
+      if (window.scrollY > 0) {
+        window.scrollTo(0, 0);
+      }
+    });
+    // Set initial height
+    adjustAppHeight();
+  }
+}
+
 // === Init ===
 function init() {
   cacheElements();
   setupEventListeners();
+  setupViewportLock();
   connectWebSocket();
   updateSendButton();
   checkScrollPosition();
