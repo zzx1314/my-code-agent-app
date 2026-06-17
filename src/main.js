@@ -178,7 +178,9 @@ async function shareFile(fileInfo) {
   const { name, content, mime } = fileInfo;
 
   try {
-    // Try Web Share API directly first (works well on Android without saving)
+    console.log('[File] navigator.share available:', !!navigator.share);
+
+    // Try Web Share API (not available in Android WebView, only in Chrome)
     if (navigator.share) {
       try {
         const blob = new Blob([content], { type: mime });
@@ -189,14 +191,22 @@ async function shareFile(fileInfo) {
         });
         return; // Shared successfully
       } catch (shareErr) {
-        // User cancelled → do nothing
         if (shareErr.name === 'AbortError') return;
         console.warn('[File] Share API error:', shareErr);
-        // Fall through to save fallback
       }
     }
 
-    // Fallback: save file to device
+    // Try Tauri Android share via plugin command
+    if (window.__TAURI__ && window.__TAURI__.core) {
+      const result = await window.__TAURI__.core.invoke('plugin:share|share_file', {
+        name,
+        contents: Array.from(content),
+        mime,
+      });
+      if (result) return;
+    }
+
+    // Fallback: save file
     const result = await saveFileToDevice(fileInfo);
     if (result.success) {
       showToast('文件已保存: ' + name);
