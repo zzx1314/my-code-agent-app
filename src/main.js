@@ -22,6 +22,50 @@ let isAtBottom = true;
 const sentMessages = new Map();
 const DEDUP_WINDOW_MS = 2000;
 
+// === Chat History Persistence ===
+const STORAGE_KEY = 'chat_history';
+const MAX_HISTORY = 500; // 最多保存500条消息
+
+function saveMessageToHistory(msg) {
+  try {
+    let history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    history.push(msg);
+    // 超过上限则截断
+    if (history.length > MAX_HISTORY) {
+      history = history.slice(-MAX_HISTORY);
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  } catch (e) {
+    console.warn('[History] Save failed:', e);
+  }
+}
+
+function loadChatHistory() {
+  try {
+    const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    history.forEach(msg => {
+      if (msg.type === 'user') {
+        addUserMessage(msg.text, null, false);
+      } else if (msg.type === 'other') {
+        addOtherMessage(msg.text, msg.sender, false);
+      } else if (msg.type === 'system') {
+        addSystemMessage(msg.text, false);
+      }
+    });
+    if (history.length > 0) {
+      addSystemMessage(`已加载 ${history.length} 条历史消息`);
+    }
+    scrollToBottom();
+  } catch (e) {
+    console.warn('[History] Load failed:', e);
+  }
+}
+
+function clearChatHistory() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+// === DOM Elements ===
 // === DOM Elements ===
 const elements = {};
 
@@ -646,7 +690,7 @@ function hideTyping() {
   elements.typingIndicator.classList.add('hidden');
 }
 
-function addUserMessage(text, msgId = null) {
+function addUserMessage(text, msgId = null, save = true) {
   const div = document.createElement('div');
   div.className = 'message user';
 
@@ -666,9 +710,12 @@ function addUserMessage(text, msgId = null) {
 
   elements.messages.appendChild(div);
   scrollToBottom();
+  if (save) {
+    saveMessageToHistory({ type: 'user', text, time });
+  }
 }
 
-function addOtherMessage(text, sender = null) {
+function addOtherMessage(text, sender = null, save = true) {
   const div = document.createElement('div');
   div.className = 'message other';
 
@@ -687,9 +734,12 @@ function addOtherMessage(text, sender = null) {
 
   elements.messages.appendChild(div);
   scrollToBottom();
+  if (save) {
+    saveMessageToHistory({ type: 'other', text, sender, time });
+  }
 }
 
-function addSystemMessage(text) {
+function addSystemMessage(text, save = true) {
   const div = document.createElement('div');
   div.className = 'message system-message';
 
@@ -706,6 +756,9 @@ function addSystemMessage(text) {
 
   elements.messages.appendChild(div);
   scrollToBottom();
+  if (save) {
+    saveMessageToHistory({ type: 'system', text });
+  }
 }
 
 // === UI: Status ===
@@ -932,6 +985,7 @@ function setupViewportLock() {
 // === Init ===
 function init() {
   cacheElements();
+  loadChatHistory();
   setupEventListeners();
   setupViewportLock();
   connectWebSocket();
