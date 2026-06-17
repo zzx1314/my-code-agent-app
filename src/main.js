@@ -51,7 +51,7 @@ function setActiveSessionId(sessionId) {
   localStorage.setItem('active_session_id', sessionId);
 }
 
-function createSession(name) {
+function createSession(name, syncToBackend = true) {
   const sessions = getSessions();
   const newSession = {
     id: generateSessionId(),
@@ -63,7 +63,9 @@ function createSession(name) {
   saveSessions(sessions);
   setActiveSessionId(newSession.id);
   localStorage.setItem(STORAGE_KEY + '_' + newSession.id, '[]');
-  syncSessionToBackend('create', newSession.name);
+  if (syncToBackend) {
+    syncSessionToBackend('create', newSession.name, newSession.id);
+  }
   return newSession;
 }
 
@@ -74,7 +76,7 @@ function deleteSession(sessionId) {
   saveSessions(filtered);
   localStorage.removeItem(STORAGE_KEY + '_' + sessionId);
   if (session) {
-    syncSessionToBackend('delete', session.name);
+    syncSessionToBackend('delete', session.name, session.id);
   }
   if (getActiveSessionId() === sessionId) {
     if (filtered.length > 0) {
@@ -86,7 +88,7 @@ function deleteSession(sessionId) {
   }
 }
 
-function syncSessionToBackend(action, sessionName) {
+function syncSessionToBackend(action, sessionName, sessionId) {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     return;
   }
@@ -96,6 +98,7 @@ function syncSessionToBackend(action, sessionName) {
     case 'create':
       payload = JSON.stringify({
         type: 'create_session',
+        session_id: sessionId,
         name: sessionName,
         id: msgId
       });
@@ -103,6 +106,7 @@ function syncSessionToBackend(action, sessionName) {
     case 'delete':
       payload = JSON.stringify({
         type: 'delete_session',
+        session_id: sessionId,
         name: sessionName,
         id: msgId
       });
@@ -110,6 +114,7 @@ function syncSessionToBackend(action, sessionName) {
     case 'switch':
       payload = JSON.stringify({
         type: 'switch_session',
+        session_id: sessionId,
         name: sessionName,
         id: msgId
       });
@@ -120,7 +125,7 @@ function syncSessionToBackend(action, sessionName) {
   }
 }
 
-function getCurrentSessionId() {
+function getCurrentSessionId(syncToBackend = false) {
   let sessionId = getActiveSessionId();
   if (!sessionId) {
     const sessions = getSessions();
@@ -128,7 +133,7 @@ function getCurrentSessionId() {
       sessionId = sessions[0].id;
       setActiveSessionId(sessionId);
     } else {
-      const newSession = createSession();
+      const newSession = createSession('新会话', syncToBackend);
       sessionId = newSession.id;
     }
   }
@@ -202,14 +207,14 @@ function updateSessionName() {
   }
 }
 
-function switchSession(sessionId) {
+function switchSession(sessionId, syncToBackend = true) {
   const sessions = getSessions();
   const session = sessions.find(s => s.id === sessionId);
   setActiveSessionId(sessionId);
   loadChatHistory();
   closeSessionPanel();
-  if (session) {
-    syncSessionToBackend('switch', session.name);
+  if (session && syncToBackend) {
+    syncSessionToBackend('switch', session.name, session.id);
   }
   showToast('已切换会话');
 }
@@ -832,6 +837,25 @@ function handleIncomingMessage(data) {
 
   if (type === 'pong') {
     addSystemMessage('🏓 pong');
+    return;
+  }
+
+  if (type === 'history') {
+    const messages = parsed.messages || [];
+    // Don't overwrite local history with empty backend data
+    if (messages.length === 0) {
+      return;
+    }
+    clearMessages();
+    messages.forEach(msg => {
+      if (msg.role === 'user') {
+        addUserMessage(msg.content, null, false);
+      } else if (msg.role === 'assistant') {
+        addOtherMessage(msg.content, null, false);
+      }
+    });
+    addSystemMessage(`已从服务器加载 ${messages.length} 条历史消息`);
+    scrollToBottom();
     return;
   }
 
