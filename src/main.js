@@ -22,6 +22,10 @@ let isAtBottom = true;
 const sentMessages = new Map();
 const DEDUP_WINDOW_MS = 2000;
 
+// Track whether local history has been loaded on startup
+// Prevents server 'history' messages from overwriting locally loaded history
+let localHistoryLoaded = false;
+
 // === Chat History Persistence ===
 const STORAGE_KEY = 'chat_history';
 const SESSIONS_KEY = 'chat_sessions';
@@ -165,8 +169,9 @@ function saveMessageToHistory(msg) {
 }
 
 function loadChatHistory() {
+  let sessionId = null;
   try {
-    const sessionId = getCurrentSessionId();
+    sessionId = getCurrentSessionId();
     const key = STORAGE_KEY + '_' + sessionId;
     const history = JSON.parse(localStorage.getItem(key) || '[]');
     clearMessages();
@@ -180,18 +185,42 @@ function loadChatHistory() {
       }
     });
     if (history.length > 0) {
-      addSystemMessage(`已加载 ${history.length} 条历史消息`);
+      addSystemMessage(`已加载 ${history.length} 条历史消息`, false);
+      localHistoryLoaded = true;
+    } else {
+      // 历史为空时显示欢迎消息，允许服务端历史覆盖
+      showWelcomeMessage();
     }
     updateSessionName();
     scrollToBottom();
   } catch (e) {
-    console.warn('[History] Load failed:', e);
+    console.error('[History] Load failed:', e);
+    console.error('[History] Session ID at failure:', sessionId);
+    // 确保页面上不完全是空白
+    if (elements.messages && elements.messages.children.length === 0) {
+      showWelcomeMessage();
+    }
   }
 }
 
 function clearChatHistory() {
   const sessionId = getCurrentSessionId();
   localStorage.removeItem(STORAGE_KEY + '_' + sessionId);
+}
+
+function showWelcomeMessage() {
+  elements.messages.innerHTML = `
+    <div class="message system-message">
+      <div class="message-bubble system">
+        <span class="system-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+        </span>
+        <span>欢迎使用聊天！连接 WebSocket 服务器后即可开始对话。</span>
+      </div>
+    </div>
+  `;
 }
 
 function clearMessages() {
@@ -211,6 +240,9 @@ function switchSession(sessionId, syncToBackend = true) {
   const sessions = getSessions();
   const session = sessions.find(s => s.id === sessionId);
   setActiveSessionId(sessionId);
+  // 切换会话时重置标记，允许服务端历史（含模型回复）覆盖本地历史
+  // 本地历史可能因流式回复未被持久化而丢失模型回复
+  localHistoryLoaded = false;
   loadChatHistory();
   closeSessionPanel();
   if (session && syncToBackend) {
@@ -806,6 +838,10 @@ function handleIncomingMessage(data) {
         bubble.textContent = text;
       }
       streamingMsgEl = null;
+      // 将流式回复保存到历史记录（之前缺失了这一步）
+      if (text) {
+        saveMessageToHistory({ type: 'other', text, sender: null, time: formatTime(new Date()) });
+      }
     } else if (text) {
       addOtherMessage(text);
     }
@@ -844,7 +880,12 @@ function handleIncomingMessage(data) {
 
   if (type === 'history') {
     const messages = parsed.messages || [];
-    // Don't overwrite local history with empty backend data
+    // 如果本地历史已加载，不再用服务端历史覆盖
+    if (localHistoryLoaded) {
+      console.log('[History] Local history already loaded, skipping server history');
+      return;
+    }
+    // Don't overwrite with empty backend data
     if (messages.length === 0) {
       return;
     }
@@ -856,7 +897,7 @@ function handleIncomingMessage(data) {
         addOtherMessage(msg.content, null, false);
       }
     });
-    addSystemMessage(`已从服务器加载 ${messages.length} 条历史消息`);
+    addSystemMessage(`已从服务器加载 ${messages.length} 条历史消息`, false);
     scrollToBottom();
     return;
   }
