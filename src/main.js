@@ -92,44 +92,54 @@ async function saveFileToDevice(fileInfo) {
   const { name, content, mime } = fileInfo;
 
   try {
-    // Try using Tauri FS plugin
-    if (window.__TAURI__ && window.__TAURI__.core) {
-      // Use $CACHE or $DOCUMENT for better Android compatibility
-      const baseDir = '$CACHE';
-      const dir = baseDir + '/shared_files';
-      const filePath = dir + '/' + name;
-
-      // Ensure the directory exists
-      try {
-        await window.__TAURI__.core.invoke('plugin:fs|mkdir', {
-          path: dir,
-          recursive: true,
-        });
-      } catch (e) { /* dir may already exist */ }
-
-      // Write file as base64 (handles both text and binary)
-      const b64 = arrayBufferToBase64(content);
-      await window.__TAURI__.core.invoke('plugin:fs|write_file', {
-        path: filePath,
-        contents: b64,
-      });
-
-      showToast('✅ 文件已保存: ' + name);
-      return { success: true, path: filePath };
-    } else {
-      // Fallback: download via blob URL
-      const blob = new Blob([content], { type: mime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-      showToast('✅ 文件已下载: ' + name);
-      return { success: true, path: null };
+    // Log the resolved save path if available
+    if (window.__TAURI__) {
+      let downloadDir = 'Download';
+      if (window.__TAURI__.path && window.__TAURI__.path.downloadDir) {
+        downloadDir = await window.__TAURI__.path.downloadDir();
+      }
+      console.log('[File] Saving to directory:', downloadDir);
+      console.log('[File] Full save path:', downloadDir + '/' + name);
     }
+
+    // Try using Tauri FS plugin
+    if (window.__TAURI__) {
+      // Use the high-level fs plugin API (available with withGlobalTauri: true)
+      if (window.__TAURI__.fs && window.__TAURI__.fs.writeFile) {
+        await window.__TAURI__.fs.writeFile(name, new Uint8Array(content), {
+          baseDir: window.__TAURI__.fs.BaseDirectory.Download,
+        });
+
+        showToast('✅ 文件已保存: ' + name);
+        return { success: true, path: name };
+      }
+
+      // Tauri v2 plugin-fs write_file expects path in headers and data as raw body
+      if (window.__TAURI__.core) {
+        await window.__TAURI__.core.invoke('plugin:fs|write_file', new Uint8Array(content), {
+          headers: {
+            path: encodeURIComponent(name),
+            options: JSON.stringify({ baseDir: 'Download' }),
+          },
+        });
+
+        showToast('✅ 文件已保存: ' + name);
+        return { success: true, path: name };
+      }
+    }
+
+    // Fallback: download via blob URL
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showToast('✅ 文件已下载: ' + name);
+    return { success: true, path: null };
   } catch (err) {
     console.error('[File] Save error:', err);
     showToast('❌ 保存文件失败: ' + (err.message || err));
@@ -137,15 +147,38 @@ async function saveFileToDevice(fileInfo) {
   }
 }
 
+async function saveFileButtonClick(fileInfo) {
+  const { name, content, mime } = fileInfo;
+
+  // On mobile (especially Android), use Web Share API first
+  // System share sheet includes "Save to Files" / "Save to Downloads" options
+  if (navigator.share) {
+    try {
+      const blob = new Blob([content], { type: mime });
+      const file = new File([blob], name, { type: mime });
+      await navigator.share({
+        files: [file],
+        title: name,
+      });
+      return;
+    } catch (shareErr) {
+      if (shareErr.name === 'AbortError') return;
+      console.warn('[File] Save via Share API error:', shareErr);
+    }
+  }
+
+  // Fallback: try Tauri FS (writes to app-private directory on Android)
+  const result = await saveFileToDevice(fileInfo);
+  if (result.success) {
+    showToast('✅ 文件已保存');
+  }
+}
+
 async function shareFile(fileInfo) {
   const { name, content, mime } = fileInfo;
 
   try {
-    // First save the file
-    const result = await saveFileToDevice(fileInfo);
-    if (!result.success) return;
-
-    // Try Web Share API
+    // Try Web Share API directly first (works well on Android without saving)
     if (navigator.share) {
       try {
         const blob = new Blob([content], { type: mime });
@@ -154,16 +187,20 @@ async function shareFile(fileInfo) {
           files: [file],
           title: name,
         });
-        return;
+        return; // Shared successfully
       } catch (shareErr) {
-        // User cancelled or API not available
-        if (shareErr.name !== 'AbortError') {
-          console.warn('[File] Share API error:', shareErr);
-        }
+        // User cancelled → do nothing
+        if (shareErr.name === 'AbortError') return;
+        console.warn('[File] Share API error:', shareErr);
+        // Fall through to save fallback
       }
     }
 
-    showToast('文件已保存: ' + name);
+    // Fallback: save file to device
+    const result = await saveFileToDevice(fileInfo);
+    if (result.success) {
+      showToast('文件已保存: ' + name);
+    }
   } catch (err) {
     console.error('[File] Share error:', err);
     showToast('分享失败');
@@ -197,6 +234,53 @@ function getFileIcon(name) {
     zip: '📦', tar: '📦', gz: '📦',
   };
   return icons[ext] || '📎';
+}
+
+// Handle file_read tool result from the AI — extract file path & content, show card
+function handleFileToolResult(data) {
+  const content = data.content || '';
+  
+  // Try to parse the file_read output (contains path + content with line numbers)
+  let path = '', fileContent = '', fileName = '';
+  
+  // file_read returns JSON: {"path":"...","content":"...","lines":N,"start":0,"end":N,"truncated":false}
+  try {
+    const parsed = JSON.parse(content);
+    path = parsed.path || '';
+    fileContent = parsed.content || '';
+    fileName = path.split('/').pop() || path.split('\\').pop() || 'file';
+  } catch (e) {
+    // Not JSON — try to extract first line as path
+    const lines = content.split('\n');
+    if (lines.length > 0) {
+      fileContent = content;
+      // Try to find file path in the content
+      const pathMatch = content.match(/^(?:File|Path):\s*(.+)/m);
+      path = pathMatch ? pathMatch[1].trim() : '';
+      fileName = path.split('/').pop() || 'file';
+    }
+  }
+
+  if (!fileContent) return;
+
+  // Determine MIME type from file extension
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  const textExts = ['rs','js','ts','py','go','java','c','cpp','h','html','css','json','md','txt','toml','yaml','yml','xml','sh','bash','zsh','fish','sql','rb','php','swift','kt','scala','dart','lua','r','m','mm','vue','svelte','jsx','tsx'];
+  const isText = textExts.includes(ext);
+
+  // Encode the text content as bytes for the save function
+  const encoder = new TextEncoder();
+  const contentBytes = encoder.encode(fileContent);
+
+  addFileCardMessage({
+    name: fileName,
+    path: path,
+    size: contentBytes.length,
+    mime: isText ? 'text/plain' : 'application/octet-stream',
+    content: contentBytes,
+    isText: true,
+    textContent: fileContent,
+  });
 }
 
 function addFileListMessage(files, query) {
@@ -282,8 +366,7 @@ function addFileCardMessage(fileInfo) {
 
   // Bind save button
   div.querySelector('.save-btn')?.addEventListener('click', async () => {
-    await saveFileToDevice(fileInfo);
-    showToast('✅ 文件已保存');
+    await saveFileButtonClick(fileInfo);
   });
 
   // Bind share button
@@ -508,7 +591,17 @@ function handleIncomingMessage(data) {
     return;
   }
 
-  if (type === 'tool_call' || type === 'tool_result') {
+  if (type === 'tool_call') {
+    return;
+  }
+
+  // Handle file_read tool results — show file card with save/share
+  if (type === 'tool_result' && parsed.name === 'file_read') {
+    handleFileToolResult(parsed);
+    return;
+  }
+
+  if (type === 'tool_result') {
     return;
   }
 
