@@ -4,7 +4,7 @@
 
 // === Configuration ===
 const CONFIG = {
-  wsUrl: 'ws://192.168.41.227:8089',
+  wsUrl: 'ws://39.107.55.13:8095',
   username: '我',
   reconnectDelay: 3000,
   maxReconnectAttempts: 10,
