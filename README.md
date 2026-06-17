@@ -14,6 +14,8 @@ export ANDROID_NDK_ROOT=/home/zhangzexin/Android/Sdk/ndk/27.2.12479018
 export ANDROID_SDK_ROOT=/home/zhangzexin/Android/Sdk
 
 
+export JAVA_HOME=/home/zhangzexin/.sdkman/candidates/java/17.0.18-tem
+export PATH=$JAVA_HOME/bin:$PATH
 sdk use java 17.0.18-tem
 pnpm tauri android build --apk
 
