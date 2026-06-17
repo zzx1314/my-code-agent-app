@@ -881,8 +881,148 @@ html, body {
     max-width: 90%;
   }
 
-  .settings-panel {
+  .settings-panel, .session-panel {
     right: 8px;
     width: calc(100% - 16px);
   }
+}
+
+/* === Session Panel === */
+.session-panel {
+  position: absolute;
+  top: 64px;
+  left: 12px;
+  width: 320px;
+  max-width: calc(100% - 24px);
+  background: var(--bg-header);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 20;
+  animation: slideDown 0.2s ease-out;
+}
+
+.session-panel.hidden {
+  display: none;
+}
+
+.session-content {
+  padding: 20px;
+}
+
+.session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.session-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.session-header .btn-primary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.session-item:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(11, 147, 246, 0.1);
+}
+
+.session-item.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.session-item.active .session-item-time {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.session-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.session-item-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.session-item-delete {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.session-item:hover .session-item-delete {
+  opacity: 1;
+}
+
+.session-item-delete:hover {
+  background: var(--red);
+  color: white;
+}
+
+.session-item-delete svg {
+  width: 16px;
+  height: 16px;
+}
+
+.session-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-size: 14px;
 }

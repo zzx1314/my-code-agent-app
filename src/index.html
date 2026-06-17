@@ -13,6 +13,12 @@
       <!-- Header -->
       <header id="header">
         <div class="header-left">
+          <button id="session-btn" class="icon-btn" title="会话管理">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              <line x1="9" y1="10" x2="15" y2="10"/>
+            </svg>
+          </button>
           <div class="avatar-group">
             <div class="avatar" id="chat-avatar">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -20,7 +26,7 @@
               </svg>
             </div>
             <div class="header-info">
-              <span class="header-title">云服务器聊天</span>
+              <span class="header-title" id="session-name">新会话</span>
               <div class="connection-status">
                 <span class="status-dot" id="status-dot"></span>
                 <span class="status-text" id="status-text">连接中...</span>
@@ -54,6 +60,25 @@
             <input type="text" id="username-input" value="我" placeholder="你的名称" />
           </div>
           <button id="settings-close-btn" class="btn-secondary">关闭</button>
+        </div>
+      </div>
+
+      <!-- Session Panel -->
+      <div id="session-panel" class="session-panel hidden">
+        <div class="session-content">
+          <div class="session-header">
+            <h3>会话管理</h3>
+            <button id="new-session-btn" class="btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              新建会话
+            </button>
+          </div>
+          <div id="session-list" class="session-list">
+            <!-- Session items will be rendered here -->
+          </div>
+          <button id="session-close-btn" class="btn-secondary">关闭</button>
         </div>
       </div>
 

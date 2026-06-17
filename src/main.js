@@ -24,17 +24,136 @@ const DEDUP_WINDOW_MS = 2000;
 
 // === Chat History Persistence ===
 const STORAGE_KEY = 'chat_history';
-const MAX_HISTORY = 500; // 最多保存500条消息
+const SESSIONS_KEY = 'chat_sessions';
+const MAX_HISTORY = 500;
+
+function generateSessionId() {
+  return 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+function getSessions() {
+  try {
+    return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveSessions(sessions) {
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+}
+
+function getActiveSessionId() {
+  return localStorage.getItem('active_session_id') || null;
+}
+
+function setActiveSessionId(sessionId) {
+  localStorage.setItem('active_session_id', sessionId);
+}
+
+function createSession(name) {
+  const sessions = getSessions();
+  const newSession = {
+    id: generateSessionId(),
+    name: name || '新会话',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  sessions.unshift(newSession);
+  saveSessions(sessions);
+  setActiveSessionId(newSession.id);
+  localStorage.setItem(STORAGE_KEY + '_' + newSession.id, '[]');
+  syncSessionToBackend('create', newSession.name);
+  return newSession;
+}
+
+function deleteSession(sessionId) {
+  const sessions = getSessions();
+  const session = sessions.find(s => s.id === sessionId);
+  const filtered = sessions.filter(s => s.id !== sessionId);
+  saveSessions(filtered);
+  localStorage.removeItem(STORAGE_KEY + '_' + sessionId);
+  if (session) {
+    syncSessionToBackend('delete', session.name);
+  }
+  if (getActiveSessionId() === sessionId) {
+    if (filtered.length > 0) {
+      setActiveSessionId(filtered[0].id);
+    } else {
+      const newSession = createSession();
+      setActiveSessionId(newSession.id);
+    }
+  }
+}
+
+function syncSessionToBackend(action, sessionName) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  const msgId = 'session-' + Date.now();
+  let payload;
+  switch (action) {
+    case 'create':
+      payload = JSON.stringify({
+        type: 'create_session',
+        name: sessionName,
+        id: msgId
+      });
+      break;
+    case 'delete':
+      payload = JSON.stringify({
+        type: 'delete_session',
+        name: sessionName,
+        id: msgId
+      });
+      break;
+    case 'switch':
+      payload = JSON.stringify({
+        type: 'switch_session',
+        name: sessionName,
+        id: msgId
+      });
+      break;
+  }
+  if (payload) {
+    ws.send(payload);
+  }
+}
+
+function getCurrentSessionId() {
+  let sessionId = getActiveSessionId();
+  if (!sessionId) {
+    const sessions = getSessions();
+    if (sessions.length > 0) {
+      sessionId = sessions[0].id;
+      setActiveSessionId(sessionId);
+    } else {
+      const newSession = createSession();
+      sessionId = newSession.id;
+    }
+  }
+  return sessionId;
+}
 
 function saveMessageToHistory(msg) {
   try {
-    let history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const sessionId = getCurrentSessionId();
+    const key = STORAGE_KEY + '_' + sessionId;
+    let history = JSON.parse(localStorage.getItem(key) || '[]');
     history.push(msg);
-    // 超过上限则截断
     if (history.length > MAX_HISTORY) {
       history = history.slice(-MAX_HISTORY);
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    localStorage.setItem(key, JSON.stringify(history));
+    const sessions = getSessions();
+    const session = sessions.find(s => s.id === sessionId);
+    if (session) {
+      session.updatedAt = Date.now();
+      if (session.name === '新会话' && msg.type === 'user') {
+        session.name = msg.text.substring(0, 20) + (msg.text.length > 20 ? '...' : '');
+      }
+      saveSessions(sessions);
+    }
   } catch (e) {
     console.warn('[History] Save failed:', e);
   }
@@ -42,7 +161,10 @@ function saveMessageToHistory(msg) {
 
 function loadChatHistory() {
   try {
-    const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const sessionId = getCurrentSessionId();
+    const key = STORAGE_KEY + '_' + sessionId;
+    const history = JSON.parse(localStorage.getItem(key) || '[]');
+    clearMessages();
     history.forEach(msg => {
       if (msg.type === 'user') {
         addUserMessage(msg.text, null, false);
@@ -55,6 +177,7 @@ function loadChatHistory() {
     if (history.length > 0) {
       addSystemMessage(`已加载 ${history.length} 条历史消息`);
     }
+    updateSessionName();
     scrollToBottom();
   } catch (e) {
     console.warn('[History] Load failed:', e);
@@ -62,10 +185,81 @@ function loadChatHistory() {
 }
 
 function clearChatHistory() {
-  localStorage.removeItem(STORAGE_KEY);
+  const sessionId = getCurrentSessionId();
+  localStorage.removeItem(STORAGE_KEY + '_' + sessionId);
 }
 
-// === DOM Elements ===
+function clearMessages() {
+  elements.messages.innerHTML = '';
+}
+
+function updateSessionName() {
+  const sessions = getSessions();
+  const sessionId = getCurrentSessionId();
+  const session = sessions.find(s => s.id === sessionId);
+  if (session && elements.sessionName) {
+    elements.sessionName.textContent = session.name;
+  }
+}
+
+function switchSession(sessionId) {
+  const sessions = getSessions();
+  const session = sessions.find(s => s.id === sessionId);
+  setActiveSessionId(sessionId);
+  loadChatHistory();
+  closeSessionPanel();
+  if (session) {
+    syncSessionToBackend('switch', session.name);
+  }
+  showToast('已切换会话');
+}
+
+function renderSessionList() {
+  const sessions = getSessions();
+  const activeId = getCurrentSessionId();
+  elements.sessionList.innerHTML = '';
+  if (sessions.length === 0) {
+    elements.sessionList.innerHTML = '<div class="session-empty">暂无会话，点击新建</div>';
+    return;
+  }
+  sessions.forEach(session => {
+    const div = document.createElement('div');
+    div.className = 'session-item' + (session.id === activeId ? ' active' : '');
+    const time = new Date(session.updatedAt);
+    const timeStr = time.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) + ' ' + time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    div.innerHTML = `
+      <div class="session-item-info">
+        <div class="session-item-name">${escapeHtml(session.name)}</div>
+        <div class="session-item-time">${timeStr}</div>
+      </div>
+      <button class="session-item-delete" data-session-id="${session.id}" title="删除会话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+      </button>
+    `;
+    div.addEventListener('click', (e) => {
+      if (!e.target.closest('.session-item-delete')) {
+        switchSession(session.id);
+      }
+    });
+    div.querySelector('.session-item-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (sessions.length <= 1) {
+        showToast('至少保留一个会话');
+        return;
+      }
+      if (confirm('确定删除此会话？')) {
+        deleteSession(session.id);
+        renderSessionList();
+        loadChatHistory();
+        showToast('会话已删除');
+      }
+    });
+    elements.sessionList.appendChild(div);
+  });
+}
+
 // === DOM Elements ===
 const elements = {};
 
@@ -85,6 +279,12 @@ function cacheElements() {
   elements.scrollHint = document.getElementById('scroll-bottom-hint');
   elements.toast = document.getElementById('toast');
   elements.typingIndicator = document.getElementById('typing-indicator');
+  elements.sessionBtn = document.getElementById('session-btn');
+  elements.sessionPanel = document.getElementById('session-panel');
+  elements.sessionList = document.getElementById('session-list');
+  elements.newSessionBtn = document.getElementById('new-session-btn');
+  elements.sessionCloseBtn = document.getElementById('session-close-btn');
+  elements.sessionName = document.getElementById('session-name');
 }
 
 // === File Transfer ===
@@ -824,7 +1024,6 @@ function showToast(message) {
 function toggleSettings() {
   const isHidden = elements.settingsPanel.classList.contains('hidden');
   elements.settingsPanel.classList.toggle('hidden');
-
   if (isHidden) {
     elements.wsUrlInput.value = CONFIG.wsUrl;
     elements.usernameInput.value = CONFIG.username;
@@ -834,6 +1033,18 @@ function toggleSettings() {
 
 function closeSettings() {
   elements.settingsPanel.classList.add('hidden');
+}
+
+function toggleSessionPanel() {
+  const isHidden = elements.sessionPanel.classList.contains('hidden');
+  elements.sessionPanel.classList.toggle('hidden');
+  if (isHidden) {
+    renderSessionList();
+  }
+}
+
+function closeSessionPanel() {
+  elements.sessionPanel.classList.add('hidden');
 }
 
 function applySettings() {
@@ -926,14 +1137,33 @@ function setupEventListeners() {
     closeSettings();
   });
 
-  // Close settings on escape
+  // Session panel toggle
+  elements.sessionBtn.addEventListener('click', toggleSessionPanel);
+
+  // New session button
+  elements.newSessionBtn.addEventListener('click', () => {
+    const newSession = createSession();
+    renderSessionList();
+    loadChatHistory();
+    showToast('新会话已创建');
+  });
+
+  // Close session panel
+  elements.sessionCloseBtn.addEventListener('click', closeSessionPanel);
+
+  // Close settings/session on escape
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !elements.settingsPanel.classList.contains('hidden')) {
-      closeSettings();
+    if (e.key === 'Escape') {
+      if (!elements.settingsPanel.classList.contains('hidden')) {
+        closeSettings();
+      }
+      if (!elements.sessionPanel.classList.contains('hidden')) {
+        closeSessionPanel();
+      }
     }
   });
 
-  // Close settings when clicking outside
+  // Close settings/session when clicking outside
   document.addEventListener('click', (e) => {
     if (
       !elements.settingsPanel.classList.contains('hidden') &&
@@ -941,6 +1171,13 @@ function setupEventListeners() {
       !elements.settingsBtn.contains(e.target)
     ) {
       closeSettings();
+    }
+    if (
+      !elements.sessionPanel.classList.contains('hidden') &&
+      !elements.sessionPanel.contains(e.target) &&
+      !elements.sessionBtn.contains(e.target)
+    ) {
+      closeSessionPanel();
     }
   });
 
