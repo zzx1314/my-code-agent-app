@@ -746,10 +746,12 @@ function sendMessage(text) {
   try {
     // Send as prompt command (ws_server protocol)
     const msgId = 'mobile-' + Date.now();
+    const sessionId = getCurrentSessionId();
     const payload = JSON.stringify({
       type: 'prompt',
       text: trimmed,
       id: msgId,
+      session_id: sessionId,
     });
     ws.send(payload);
 
