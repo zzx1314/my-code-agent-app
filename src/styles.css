@@ -488,6 +488,142 @@ html, body {
   color: var(--orange);
 }
 
+/* === Markdown Content in Bubbles === */
+.message-bubble.markdown-body p {
+  margin: 0 0 0.5em;
+}
+.message-bubble.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+.message-bubble.markdown-body ul,
+.message-bubble.markdown-body ol {
+  margin: 0.3em 0;
+  padding-left: 1.5em;
+}
+.message-bubble.markdown-body li {
+  margin: 0.2em 0;
+}
+.message-bubble.markdown-body h1,
+.message-bubble.markdown-body h2,
+.message-bubble.markdown-body h3,
+.message-bubble.markdown-body h4 {
+  margin: 0.5em 0 0.3em;
+  line-height: 1.3;
+}
+.message-bubble.markdown-body h1 { font-size: 1.2em; }
+.message-bubble.markdown-body h2 { font-size: 1.1em; }
+.message-bubble.markdown-body h3 { font-size: 1.05em; }
+.message-bubble.markdown-body h4 { font-size: 1em; }
+.message-bubble.markdown-body pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.45;
+  direction: ltr;
+  unicode-bidi: embed;
+}
+.message-bubble.markdown-body code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 0.9em;
+  padding: 2px 5px;
+  border-radius: 4px;
+  word-break: break-word;
+}
+.message-bubble.markdown-body pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none !important;
+  font-size: inherit;
+  white-space: pre;
+}
+.message-bubble.markdown-body blockquote {
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--accent);
+  opacity: 0.9;
+}
+.message-bubble.markdown-body a {
+  text-decoration: underline;
+}
+.message-bubble.markdown-body hr {
+  border: none;
+  border-top: 1px solid;
+  margin: 10px 0;
+  opacity: 0.3;
+}
+.message-bubble.markdown-body table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 0.9em;
+  width: 100%;
+}
+.message-bubble.markdown-body th,
+.message-bubble.markdown-body td {
+  border: 1px solid;
+  padding: 6px 10px;
+  text-align: left;
+}
+.message-bubble.markdown-body th {
+  font-weight: 600;
+}
+.message-bubble.markdown-body img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 6px 0;
+}
+.message-bubble.markdown-body strong {
+  font-weight: 700;
+}
+
+/* User bubble (blue bg) - markdown overrides */
+.message.user .message-bubble.markdown-body a {
+  color: #fff;
+  text-decoration: underline;
+  opacity: 0.9;
+}
+.message.user .message-bubble.markdown-body code {
+  background: rgba(255, 255, 255, 0.2);
+}
+.message.user .message-bubble.markdown-body pre {
+  background: rgba(0, 0, 0, 0.2);
+}
+.message.user .message-bubble.markdown-body blockquote {
+  border-left-color: rgba(255, 255, 255, 0.6);
+}
+.message.user .message-bubble.markdown-body th,
+.message.user .message-bubble.markdown-body td {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.message.user .message-bubble.markdown-body hr {
+  border-top-color: rgba(255, 255, 255, 0.3);
+}
+.message.user .message-bubble.markdown-body table {
+  color: inherit;
+}
+
+/* Other bubble (gray bg) - markdown overrides */
+.message.other .message-bubble.markdown-body a {
+  color: var(--accent);
+}
+.message.other .message-bubble.markdown-body code {
+  background: rgba(0, 0, 0, 0.1);
+}
+.message.other .message-bubble.markdown-body pre {
+  background: var(--bg-primary);
+}
+.message.other .message-bubble.markdown-body blockquote {
+  border-left-color: var(--accent);
+}
+.message.other .message-bubble.markdown-body th,
+.message.other .message-bubble.markdown-body td {
+  border-color: var(--border-color);
+}
+.message.other .message-bubble.markdown-body hr {
+  border-top-color: var(--text-secondary);
+}
+
 /* === Scroll Bottom Hint === */
 .scroll-bottom-hint {
   position: absolute;

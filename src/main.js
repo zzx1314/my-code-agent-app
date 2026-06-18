@@ -824,7 +824,7 @@ function handleIncomingMessage(data) {
     }
     const bubble = streamingMsgEl.querySelector('.message-bubble');
     if (bubble) {
-      bubble.textContent = streamingBuffer;
+      bubble.innerHTML = renderMarkdown(streamingBuffer);
     }
     scrollToBottom();
     return;
@@ -835,7 +835,7 @@ function handleIncomingMessage(data) {
     if (streamingMsgEl) {
       const bubble = streamingMsgEl.querySelector('.message-bubble');
       if (bubble) {
-        bubble.textContent = text;
+        bubble.innerHTML = renderMarkdown(text);
       }
       streamingMsgEl = null;
       // 将流式回复保存到历史记录（之前缺失了这一步）
@@ -939,7 +939,7 @@ function createStreamingMessage() {
   div.className = 'message other streaming';
   const time = formatTime(new Date());
   div.innerHTML = `
-    <div class="message-bubble"></div>
+    <div class="message-bubble markdown-body"></div>
     <div class="message-meta">
       <span class="message-time">${time}</span>
     </div>
@@ -964,7 +964,7 @@ function addUserMessage(text, msgId = null, save = true) {
   const time = formatTime(new Date());
 
   div.innerHTML = `
-    <div class="message-bubble">${escapeHtml(text)}</div>
+    <div class="message-bubble markdown-body">${renderMarkdown(text)}</div>
     <div class="message-meta">
       <span class="message-time">${time}</span>
       <span class="message-status sent">
@@ -993,7 +993,7 @@ function addOtherMessage(text, sender = null, save = true) {
 
   div.innerHTML = `
     ${senderHtml}
-    <div class="message-bubble">${escapeHtml(text)}</div>
+    <div class="message-bubble markdown-body">${renderMarkdown(text)}</div>
     <div class="message-meta">
       <span class="message-time">${time}</span>
     </div>
@@ -1150,6 +1150,20 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  const rawHtml = marked.parse(text, {
+    breaks: true,
+    gfm: true,
+  });
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'blockquote',
+      'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'a', 'img', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span'],
+    ALLOWED_ATTR: ['href', 'target', 'src', 'alt', 'title', 'class'],
+  });
 }
 
 // === Event Listeners ===
