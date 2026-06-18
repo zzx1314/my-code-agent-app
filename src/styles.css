@@ -1037,6 +1037,7 @@ html, body {
   transform: translateX(0);
   transition: transform 0.3s ease;
   overflow-y: auto;
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .session-panel.hidden {
