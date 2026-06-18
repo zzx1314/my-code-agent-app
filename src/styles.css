@@ -1139,7 +1139,7 @@ html, body {
   justify-content: center;
   transition: all var(--transition);
   flex-shrink: 0;
-  opacity: 0;
+  opacity: 1;
 }
 
 .session-item:hover .session-item-delete {
