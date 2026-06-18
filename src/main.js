@@ -318,6 +318,7 @@ function cacheElements() {
   elements.typingIndicator = document.getElementById('typing-indicator');
   elements.sessionBtn = document.getElementById('session-btn');
   elements.sessionPanel = document.getElementById('session-panel');
+  elements.sessionOverlay = document.getElementById('session-overlay');
   elements.sessionList = document.getElementById('session-list');
   elements.newSessionBtn = document.getElementById('new-session-btn');
   elements.sessionCloseBtn = document.getElementById('session-close-btn');
@@ -1104,14 +1105,18 @@ function closeSettings() {
 
 function toggleSessionPanel() {
   const isHidden = elements.sessionPanel.classList.contains('hidden');
-  elements.sessionPanel.classList.toggle('hidden');
   if (isHidden) {
     renderSessionList();
+    elements.sessionPanel.classList.remove('hidden');
+    elements.sessionOverlay.classList.remove('hidden');
+  } else {
+    closeSessionPanel();
   }
 }
 
 function closeSessionPanel() {
   elements.sessionPanel.classList.add('hidden');
+  elements.sessionOverlay.classList.add('hidden');
 }
 
 function applySettings() {
@@ -1231,6 +1236,9 @@ function setupEventListeners() {
 
   // Close session panel
   elements.sessionCloseBtn.addEventListener('click', closeSessionPanel);
+
+  // Close session drawer when clicking overlay
+  elements.sessionOverlay.addEventListener('click', closeSessionPanel);
 
   // Close settings/session on escape
   document.addEventListener('keydown', (e) => {
