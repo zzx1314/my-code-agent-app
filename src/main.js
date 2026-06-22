@@ -832,19 +832,21 @@ function handleIncomingMessage(data) {
   }
 
   if (type === 'result') {
-    const text = parsed.full_response || parsed.summary || '';
     if (streamingMsgEl) {
+      // Use streamingBuffer (accumulated across ALL turns), not parsed.full_response
+      // because full_response only contains the LAST turn's text, losing earlier turns.
       const bubble = streamingMsgEl.querySelector('.message-bubble');
-      if (bubble) {
-        bubble.innerHTML = renderMarkdown(text);
+      if (bubble && streamingBuffer) {
+        bubble.innerHTML = renderMarkdown(streamingBuffer);
       }
       streamingMsgEl = null;
-      // 将流式回复保存到历史记录（之前缺失了这一步）
-      if (text) {
-        saveMessageToHistory({ type: 'other', text, sender: null, time: formatTime(new Date()) });
+      if (streamingBuffer) {
+        saveMessageToHistory({ type: 'other', text: streamingBuffer, sender: null, time: formatTime(new Date()) });
       }
-    } else if (text) {
-      addOtherMessage(text);
+    } else if (parsed.full_response || parsed.summary) {
+      // Non-streaming result (e.g. /status command)
+      // addOtherMessage already saves to history internally
+      addOtherMessage(parsed.full_response || parsed.summary);
     }
     streamingBuffer = '';
     hideTyping();
