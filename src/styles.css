@@ -373,6 +373,7 @@ html, body {
   display: flex;
   flex-direction: column;
   max-width: 85%;
+  min-width: 0;
   animation: messageIn 0.3s ease-out;
 }
 
@@ -521,7 +522,9 @@ html, body {
   margin: 8px 0;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   font-size: 13px;
   line-height: 1.45;
   direction: ltr;
@@ -1011,13 +1014,26 @@ html, body {
   }
 }
 
-@media (max-width: 380px) {
+@media (max-width: 480px) {
   #messages-container {
     padding: 12px 12px;
   }
 
   .message {
-    max-width: 90%;
+    max-width: 92%;
+  }
+
+  .message-bubble {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .message-bubble.markdown-body pre {
+    margin: 6px -12px;
+    border-radius: 0;
+    padding: 10px 12px;
+    width: calc(100% + 24px);
+    max-width: none;
   }
 
   .settings-panel, .session-panel {
