@@ -337,7 +337,6 @@ html, body {
   overflow-x: hidden;
   padding: 16px 20px;
   position: relative;
-  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   overscroll-behavior: contain;
@@ -380,7 +379,7 @@ html, body {
 @keyframes messageIn {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.96);
+    transform: translateY(-10px) scale(0.96);
   }
   to {
     opacity: 1;

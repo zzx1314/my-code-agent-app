@@ -192,7 +192,7 @@ function loadChatHistory() {
       showWelcomeMessage();
     }
     updateSessionName();
-    scrollToBottom();
+    scrollToBottom(true);
   } catch (e) {
     console.error('[History] Load failed:', e);
     console.error('[History] Session ID at failure:', sessionId);
@@ -804,6 +804,9 @@ function sendMessage(text) {
   autoResizeInput();
   updateSendButton();
   messageCount++;
+
+  // Scroll after input resize stabilizes layout, so container height is final
+  scrollToBottom(true);
 }
 
 function handleIncomingMessage(data) {
@@ -843,6 +846,7 @@ function handleIncomingMessage(data) {
       if (streamingBuffer) {
         saveMessageToHistory({ type: 'other', text: streamingBuffer, sender: null, time: formatTime(new Date()) });
       }
+      scrollToBottom(true);
     } else if (parsed.full_response || parsed.summary) {
       // Non-streaming result (e.g. /status command)
       // addOtherMessage already saves to history internally
@@ -979,7 +983,6 @@ function addUserMessage(text, msgId = null, save = true) {
   `;
 
   elements.messages.appendChild(div);
-  scrollToBottom();
   if (save) {
     saveMessageToHistory({ type: 'user', text, time });
   }
@@ -1063,10 +1066,14 @@ function autoResizeInput() {
 }
 
 // === UI: Scroll ===
-function scrollToBottom() {
-  if (!isAtBottom) return;
+function scrollToBottom(force = false) {
+  if (!force && !isAtBottom) return;
+  if (force) isAtBottom = true;
+  const container = elements.container;
+  container.scrollTop = container.scrollHeight;
   requestAnimationFrame(() => {
-    elements.container.scrollTop = elements.container.scrollHeight;
+    if (!isAtBottom) return;
+    container.scrollTop = container.scrollHeight;
   });
 }
 
@@ -1283,6 +1290,20 @@ function setupEventListeners() {
       connectWebSocket();
     }
   });
+
+  // Mobile: re-scroll when the virtual keyboard opens/closes (viewport resizes).
+  // The keyboard changes the viewport height, which can misalign the scroll position.
+  let viewportTimer = null;
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      if (!isAtBottom) return;
+      clearTimeout(viewportTimer);
+      viewportTimer = setTimeout(() => {
+        if (!isAtBottom) return;
+        elements.container.scrollTop = elements.container.scrollHeight;
+      }, 100);
+    });
+  }
 }
 
 
