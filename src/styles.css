@@ -410,8 +410,13 @@ html, body {
   font-size: 15px;
   line-height: 1.5;
   word-break: break-word;
+  overflow-wrap: break-word;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   position: relative;
   box-shadow: var(--shadow-sm);
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* User bubble (right) */
@@ -523,6 +528,7 @@ html, body {
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   font-size: 13px;
@@ -1029,11 +1035,11 @@ html, body {
   }
 
   .message-bubble.markdown-body pre {
-    margin: 6px -12px;
-    border-radius: 0;
+    margin: 6px 0;
+    border-radius: var(--radius-sm);
     padding: 10px 12px;
-    width: calc(100% + 24px);
-    max-width: none;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .settings-panel, .session-panel {
