@@ -7,6 +7,7 @@
     "core:default",
     "opener:default",
     "fs:default",
+    "notification:default",
     "share:default",
     {
       "identifier": "fs:allow-write-text-file",

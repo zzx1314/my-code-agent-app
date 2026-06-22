@@ -26,6 +26,10 @@ const DEDUP_WINDOW_MS = 2000;
 // Prevents server 'history' messages from overwriting locally loaded history
 let localHistoryLoaded = false;
 
+// Track tasks for Android background notification
+let pendingTaskCount = 0;
+let wasBackgroundedDuringTask = false;
+
 // === Chat History Persistence ===
 const STORAGE_KEY = 'chat_history';
 const SESSIONS_KEY = 'chat_sessions';
@@ -323,6 +327,7 @@ function cacheElements() {
   elements.newSessionBtn = document.getElementById('new-session-btn');
   elements.sessionCloseBtn = document.getElementById('session-close-btn');
   elements.sessionName = document.getElementById('session-name');
+  elements.testNotificationBtn = document.getElementById('test-notification-btn');
 }
 
 // === File Transfer ===
@@ -794,6 +799,11 @@ function sendMessage(text) {
 
     // Add user message to chat
     addUserMessage(trimmed);
+    pendingTaskCount++;
+    // If app is already in background, mark for notification
+    if (document.hidden) {
+      wasBackgroundedDuringTask = true;
+    }
   } catch (err) {
     console.error('[WebSocket] Send error:', err);
     showToast('发送失败');
@@ -852,6 +862,12 @@ function handleIncomingMessage(data) {
       // addOtherMessage already saves to history internally
       addOtherMessage(parsed.full_response || parsed.summary);
     }
+    // Notify if task completed while app was backgrounded
+    pendingTaskCount = Math.max(0, pendingTaskCount - 1);
+    if (pendingTaskCount === 0 && wasBackgroundedDuringTask && document.hidden) {
+      sendBackgroundTaskNotification();
+      wasBackgroundedDuringTask = false;
+    }
     streamingBuffer = '';
     hideTyping();
     messageCount++;
@@ -860,6 +876,11 @@ function handleIncomingMessage(data) {
 
   if (type === 'error') {
     addSystemMessage('❌ ' + (parsed.message || '未知错误'));
+    pendingTaskCount = Math.max(0, pendingTaskCount - 1);
+    if (pendingTaskCount === 0 && wasBackgroundedDuringTask && document.hidden) {
+      sendBackgroundTaskNotification();
+      wasBackgroundedDuringTask = false;
+    }
     streamingBuffer = '';
     streamingMsgEl = null;
     hideTyping();
@@ -1180,6 +1201,92 @@ function renderMarkdown(text) {
   });
 }
 
+// === Android Notification (Background Task Completion) ===
+// Cache for notification permission state
+let notificationPermissionGranted = false;
+
+// Initialize notification permission (Android 13+ requires runtime permission)
+async function initNotificationPermission() {
+  if (!window.__TAURI__ || !window.__TAURI__.core) {
+    showToast('通知不可用（非 Tauri 环境）');
+    return;
+  }
+  try {
+    const granted = await window.__TAURI__.core.invoke('plugin:notification|is_permission_granted');
+    notificationPermissionGranted = granted;
+    console.log('[Notification] Permission granted:', granted);
+    if (!granted) {
+      showToast('请求通知权限...');
+      const result = await window.__TAURI__.core.invoke('plugin:notification|request_permission');
+      notificationPermissionGranted = (result === 'granted');
+      console.log('[Notification] Permission request result:', result);
+      if (notificationPermissionGranted) {
+        showToast('通知权限已获取');
+      } else {
+        showToast('通知权限被拒绝，可前往系统设置开启');
+      }
+    }
+  } catch (e) {
+    console.error('[Notification] Permission init failed:', e);
+    showToast('通知权限检查失败: ' + e);
+  }
+}
+
+// Send a notification when a background task completes
+async function sendBackgroundTaskNotification() {
+  if (!window.__TAURI__ || !window.__TAURI__.core) {
+    showToast('通知发送失败：非 Tauri 环境');
+    return;
+  }
+  if (!notificationPermissionGranted) {
+    console.warn('[Notification] Cannot send: permission not granted');
+    return;
+  }
+  try {
+    await window.__TAURI__.core.invoke('plugin:notification|notify', {
+      options: {
+        title: '任务已完成',
+        body: 'AI 回复已完成，请查看应用。',
+      },
+    });
+    console.log('[Notification] Sent successfully');
+  } catch (e) {
+    console.error('[Notification] Send failed:', e);
+    showToast('通知发送失败: ' + e);
+  }
+}
+
+// Test notification button (called from settings)
+async function sendTestNotification() {
+  if (!window.__TAURI__ || !window.__TAURI__.core) {
+    showToast('通知不可用');
+    return;
+  }
+  // Re-check and request permission
+  try {
+    const granted = await window.__TAURI__.core.invoke('plugin:notification|is_permission_granted');
+    notificationPermissionGranted = granted;
+    if (!granted) {
+      const result = await window.__TAURI__.core.invoke('plugin:notification|request_permission');
+      notificationPermissionGranted = (result === 'granted');
+      if (!notificationPermissionGranted) {
+        showToast('通知权限被拒绝');
+        return;
+      }
+    }
+    await window.__TAURI__.core.invoke('plugin:notification|notify', {
+      options: {
+        title: '测试通知',
+        body: '如果你看到这条通知，通知功能正常工作！',
+      },
+    });
+    showToast('✅ 测试通知已发送，请查看通知栏');
+  } catch (e) {
+    console.error('[Notification] Test failed:', e);
+    showToast('❌ 测试通知失败: ' + e);
+  }
+}
+
 // === Event Listeners ===
 function setupEventListeners() {
   // Send message
@@ -1214,6 +1321,9 @@ function setupEventListeners() {
 
   // Close settings
   elements.settingsCloseBtn.addEventListener('click', applySettings);
+
+  // Test notification button in settings
+  elements.testNotificationBtn.addEventListener('click', sendTestNotification);
 
   // Reconnect button in settings
   elements.reconnectBtn.addEventListener('click', () => {
@@ -1279,15 +1389,25 @@ function setupEventListeners() {
     }
   });
 
-  // Visibility change - reconnect if needed
+  // Visibility change - background notification & reconnect
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && !isConnected && reconnectAttempts < CONFIG.maxReconnectAttempts) {
-      reconnectAttempts = 0;
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
+    if (document.hidden) {
+      // App minimized: if tasks are running, mark for notification on completion
+      if (pendingTaskCount > 0) {
+        wasBackgroundedDuringTask = true;
       }
-      connectWebSocket();
+    } else {
+      // App restored: clear notification flag (user is back)
+      wasBackgroundedDuringTask = false;
+      // Reconnect if needed
+      if (!isConnected && reconnectAttempts < CONFIG.maxReconnectAttempts) {
+        reconnectAttempts = 0;
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        connectWebSocket();
+      }
     }
   });
 
@@ -1309,8 +1429,9 @@ function setupEventListeners() {
 
 
 // === Init ===
-function init() {
+async function init() {
   cacheElements();
+  initNotificationPermission();
   loadChatHistory();
   setupEventListeners();
   connectWebSocket();
