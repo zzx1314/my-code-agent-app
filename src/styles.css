@@ -68,6 +68,7 @@
 html, body {
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   font-family: var(--font-family);
   font-size: 16px;
   line-height: 1.5;
@@ -338,6 +339,8 @@ html, body {
   position: relative;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 #messages-container::-webkit-scrollbar {
